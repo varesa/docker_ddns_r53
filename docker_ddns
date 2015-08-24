@@ -27,9 +27,9 @@ log.info "Maintainer: Kelly Becker <kbecker@kellybeckr.me>"
 log.info "Website: http://kellybecker.me"
 
 # Default Configuration
-ENV['DDNS_KEY']   ||= "/etc/bind/ddns.key"
-ENV['NET_NS']     ||= "10.1.0.1"
-ENV['NET_DOMAIN'] ||= "kellybecker.me"
+ENV['DDNS_KEY']   ||= "/etc/pki/dnssec-keys/docker-ddns-update.key"
+ENV['NET_NS']     ||= "192.168.0.201"
+ENV['NET_DOMAIN'] ||= "containers.ikioma"
 ENV['DOCKER_PID'] ||= "/var/run/docker.pid"
 
 # Ensure docker is running
@@ -80,34 +80,24 @@ while line = events.gets
     # Get Container Details for DNS
     ENV['CONTAINER_IP_ADDR']  = %x{docker inspect $CONTAINER_CID_LONG | grep '"IPAddress"'}.strip.gsub(/[^0-9\.]/i, '')
     ENV['CONTAINER_HOSTNAME'] = %x{docker inspect $CONTAINER_CID_LONG| grep '"Hostname"' | awk '{print $NF}'}.strip.gsub(/^"(.*)",/i, '\1')
+    ENV['CONTAINER_NAME'] =     %x{docker inspect --format='{{.Name}}' $CONTAINER_CID_LONG}.strip.gsub('/', '')
 
     puts ENV['CONTAINER_HOSTNAME']
     puts ENV['CONTAINER_IP_ADDR']
 
-    # Get Process ID of the LXC Container
-    ENV['NSPID'] = %x{head -n 1 $(find "$CGROUPMNT" -name $CONTAINER_CID_LONG | head -n 1)/tasks}.strip
-
-    # Ensure we have the PID
-    unless ENV['NSPID']
-      log.error "Could not find a process indentifier for container #{ENV['CONTAINER_CID']}. Cannot update DNS."
-      next
-    end
-
-    # Create the Net Namespaces
-    %x{mkdir -p /var/run/netns}
-    %x{rm -f /var/run/netns/$NSPID}
-    %x{ln -s /proc/$NSPID/ns/net /var/run/netns/$NSPID}
 
     # Build the command to update the dns server
-    update_command = <<-UPDATE
-    ip netns exec $NSPID nsupdate -k $DDNS_KEY <<-EOF
+    update_command = <<-EOF
+    nsupdate -k $DDNS_KEY <<-UPDATE
     server $NET_NS
-    zone $NET_DOMAIN.
+    zone $NET_DOMAIN
     update delete $CONTAINER_HOSTNAME.$NET_DOMAIN
     update add $CONTAINER_HOSTNAME.$NET_DOMAIN 60 A $CONTAINER_IP_ADDR
+    update add $CONTAINER_NAME.$NET_DOMAIN 60 CNAME $CONTAINER_HOSTNAME.$NET_DOMAIN
     send
-    EOF
     UPDATE
+    EOF
+    
 
     # Run the nameserver update in the Net Namespace of the LXC Container
     system(update_command.gsub(/^[ ]{4}/, ''))
