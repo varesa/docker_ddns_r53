@@ -15,9 +15,9 @@ File.open('/var/run/docker_ddns.pid', 'w+') { |f| f.write($$) }
 
 # Capture the terminate signal
 trap("INT") do
-  log.info "Caught INT Signal... Exiting."
+#  log.info "Caught INT Signal... Exiting."
   File.unlink('/var/run/docker_ddns.pid')
-  sleep 1
+  puts "Stopped"
   exit
 end
 
