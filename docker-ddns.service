@@ -1,0 +1,12 @@
+[Unit]
+Description=Update DNS records for docker containers
+Requires=docker.service
+After=docker.service
+
+[Install]
+WantedBy=multi-user.target
+
+[Service]
+ExecStart=/usr/local/bin/docker_ddns
+ExecStop=/usr/bin/sh -c '/usr/bin/kill -s INT $(pgrep -f "ruby /usr/local/bin/docker_ddns")'
+
