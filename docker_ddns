@@ -82,9 +82,6 @@ while line = events.gets
     ENV['CONTAINER_HOSTNAME'] = %x{docker inspect $CONTAINER_CID_LONG| grep '"Hostname"' | awk '{print $NF}'}.strip.gsub(/^"(.*)",/i, '\1')
     ENV['CONTAINER_NAME'] =     %x{docker inspect --format='{{.Name}}' $CONTAINER_CID_LONG}.strip.gsub('/', '')
 
-    puts ENV['CONTAINER_HOSTNAME']
-    puts ENV['CONTAINER_IP_ADDR']
-
 
     # Build the command to update the dns server
     update_command = <<-EOF
@@ -105,6 +102,35 @@ while line = events.gets
     # Message an success
     if $?.success?
       log.info "Updated Docker DNS (#{ENV['CONTAINER_CID']}): #{ENV['CONTAINER_HOSTNAME']}.#{ENV['NET_DOMAIN']} 60 A #{ENV['CONTAINER_IP_ADDR']}."
+      log.info "       Added alias (#{ENV['CONTAINER_CID']}): #{ENV['CONTAINER_NAME']}.#{ENV['NET_DOMAIN']} 60 CNAME #{ENV['CONTAINER_HOSTNAME']}.#{ENV['NET_DOMAIN']}."
+    else
+      log.error "We could not update the Docker DNS records for #{ENV['CONTAINER_CID']}. Please check your nsupdate keys."
+    end
+  when 'die'
+    # Get Container Details for DNS
+    ENV['CONTAINER_IP_ADDR']  = %x{docker inspect $CONTAINER_CID_LONG | grep '"IPAddress"'}.strip.gsub(/[^0-9\.]/i, '')
+    ENV['CONTAINER_HOSTNAME'] = %x{docker inspect $CONTAINER_CID_LONG| grep '"Hostname"' | awk '{print $NF}'}.strip.gsub(/^"(.*)",/i, '\1')
+    ENV['CONTAINER_NAME'] =     %x{docker inspect --format='{{.Name}}' $CONTAINER_CID_LONG}.strip.gsub('/', '')
+
+
+    # Build the command to update the dns server
+    update_command = <<-EOF
+    nsupdate -k $DDNS_KEY <<-UPDATE
+    server $NET_NS
+    zone $NET_DOMAIN
+    update delete $CONTAINER_HOSTNAME.$NET_DOMAIN
+    update delete $CONTAINER_NAME.$NET_DOMAIN
+    send
+    UPDATE
+    EOF
+    
+
+    # Run the nameserver update in the Net Namespace of the LXC Container
+    system(update_command.gsub(/^[ ]{4}/, ''))
+
+    # Message an success
+    if $?.success?
+      log.info "Deleted DNS records (#{ENV['CONTAINER_CID']}): #{ENV['CONTAINER_HOSTNAME']}.#{ENV['NET_DOMAIN']} and #{ENV['CONTAINER_NAME']}.#{ENV['NET_DOMAIN']}."
     else
       log.error "We could not update the Docker DNS records for #{ENV['CONTAINER_CID']}. Please check your nsupdate keys."
     end
