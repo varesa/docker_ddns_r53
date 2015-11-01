@@ -1,8 +1,9 @@
 #!/usr/bin/env ruby
 # Docker Event Listener / DDNS
-# Author: Kelly Becker <kbecker@kellybecker.me>
-# Website: http://kellybecker.me
+# Original author: Kelly Becker <kbecker@kellybecker.me>
+#         Website: http://kellybecker.me
 # Original Code: https://gist.github.com/KellyLSB/4315a0323ed0fe1d79b6
+# Changes by: Esa Varemo <esa@kuivanto.fi>
 # License: MIT
 
 # Set up a proper logger
@@ -23,8 +24,9 @@ end
 
 # Welcome message
 log.info "Starting Docker Dynamic DNS - Event Handler"
-log.info "Maintainer: Kelly Becker <kbecker@kellybeckr.me>"
-log.info "Website: http://kellybecker.me"
+log.info "Original author: Kelly Becker <kbecker@kellybeckr.me>"
+log.info "        Website: http://kellybecker.me"
+log.info "Modified by: Esa Varemo <esa@kuivanto.fi>"
 
 # Default Configuration
 ENV['DDNS_KEY']   ||= "/etc/pki/dnssec-keys/docker-ddns-update.key"
@@ -46,19 +48,6 @@ end
 
 log.info "Docker Daemon UP! - Listening for Events..."
 
-# Find CGroup Mount
-File.open('/proc/mounts', 'r').each do |line|
-  dev, mnt, fstype, options, dump, fsck = line.split
-  next if "#{fstype}" != "cgroup"
-  next if "#{options}".include?('devices')
-  ENV['CGROUPMNT'] = mnt
-end.close
-
-# Exit if missing CGroup Mount
-unless ENV['CGROUPMNT']
-  log.fatal "Could not locate cgroup mount point."
-  exit 1
-end
 
 # Listen To Docker.io Events
 events = IO.popen('docker events')
