@@ -32,21 +32,6 @@ log.info "Modified by: Esa Varemo <esa@kuivanto.fi>"
 ENV['DDNS_KEY']   ||= "/etc/pki/dnssec-keys/docker-ddns-update.key"
 ENV['NET_NS']     ||= "192.168.0.201"
 ENV['NET_DOMAIN'] ||= "containers.ikioma"
-ENV['DOCKER_PID'] ||= "/var/run/docker.pid"
-
-# Ensure docker is running
-time_waited = Time.now.to_i
-until File.exist?(ENV['DOCKER_PID'])
-  if (Time.now.to_i - time_waited) > 600
-    log.fatal "Docker daemon still not started after 10 minutes... Please Contact Your SysAdmin!"
-    exit 1
-  end
-
-  log.warn "Docker daemon is not running yet..."
-  sleep 5
-end
-
-log.info "Docker Daemon UP! - Listening for Events..."
 
 
 # Listen To Docker.io Events
