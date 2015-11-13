@@ -28,11 +28,6 @@ log.info "Original author: Kelly Becker <kbecker@kellybeckr.me>"
 log.info "        Website: http://kellybecker.me"
 log.info "Modified by: Esa Varemo <esa@kuivanto.fi>"
 
-# Default Configuration
-ENV['DDNS_KEY']   ||= "/etc/pki/dnssec-keys/docker-ddns-update.key"
-ENV['NET_NS']     ||= "192.168.0.201"
-ENV['NET_DOMAIN'] ||= "containers.ikioma"
-
 
 # Listen To Docker.io Events
 events = IO.popen('docker events')
@@ -49,65 +44,45 @@ while line = events.gets
   log.info "Event Fired (#{ENV['CONTAINER_CID']}): #{ENV['CONTAINER_EVENT']}."
 
   case ENV['CONTAINER_EVENT']
-  when 'start'
+    when 'start'
 
-    # Get Container Details for DNS
-    ENV['CONTAINER_IP_ADDR']  = %x{docker inspect --format='{{.NetworkSettings.IPAddress}}' $CONTAINER_CID_LONG }.strip
-    ENV['CONTAINER_HOSTNAME'] = %x{docker inspect --format='{{.Config.Hostname}}' $CONTAINER_CID_LONG}.strip
-    ENV['CONTAINER_NAME'] =     %x{docker inspect --format='{{.Name}}' $CONTAINER_CID_LONG}.strip.gsub('/', '')
+      # Get Container Details for DNS
+      ENV['CONTAINER_IP_ADDR']  = %x{docker inspect --format='{{.NetworkSettings.IPAddress}}' $CONTAINER_CID_LONG }.strip
+      ENV['CONTAINER_HOSTNAME'] = %x{docker inspect --format='{{.Config.Hostname}}' $CONTAINER_CID_LONG}.strip
+      ENV['CONTAINER_NAME'] =     %x{docker inspect --format='{{.Name}}' $CONTAINER_CID_LONG}.strip.gsub('/', '')
 
+      system("cli53 #{ENV['DOMAIN']} rrcreate \"#{ENV['CONTAINER_CID']} 60 A #{ENV['CONTAINER_IP_ADDR']}\"")
+      if $?.success?
+        log.info "Updated Docker DNS (#{ENV['CONTAINER_CID']}): #{ENV['CONTAINER_HOSTNAME']}.#{ENV['NET_DOMAIN']} 60 A #{ENV['CONTAINER_IP_ADDR']}."
+      else
+        log.error "We could not update the A record for #{ENV['CONTAINER_CID']}. Please check your nsupdate keys."
+      end
 
-    # Build the command to update the dns server
-    update_command = <<-EOF
-    nsupdate -k $DDNS_KEY <<-UPDATE
-    server $NET_NS
-    zone $NET_DOMAIN
-    update delete $CONTAINER_HOSTNAME.$NET_DOMAIN
-    update add $CONTAINER_HOSTNAME.$NET_DOMAIN 60 A $CONTAINER_IP_ADDR
-    update add $CONTAINER_NAME.$NET_DOMAIN 60 CNAME $CONTAINER_HOSTNAME.$NET_DOMAIN
-    send
-    UPDATE
-    EOF
-    
+      system("cli53 #{ENV['DOMAIN']} rrcreate \"#{ENV['CONTAINER_NAME']} 60 CNAME #{ENV['CONTAINER_CID']}\"")
+      if $?.success?
+        log.info "Added alias (#{ENV['CONTAINER_CID']}): #{ENV['CONTAINER_NAME']} 60 CNAME #{ENV['CONTAINER_HOSTNAME']}"
+      else
+        log.error "We could not update the CNAME record for #{ENV['CONTAINER_CID']}. Please check your nsupdate keys."
+      end
+    when 'die'
+      # Get Container Details for DNS
+      ENV['CONTAINER_IP_ADDR']  = %x{docker inspect $CONTAINER_CID_LONG | grep '"IPAddress"'}.strip.gsub(/[^0-9\.]/i, '')
+      ENV['CONTAINER_HOSTNAME'] = %x{docker inspect $CONTAINER_CID_LONG| grep '"Hostname"' | awk '{print $NF}'}.strip.gsub(/^"(.*)",/i, '\1')
+      ENV['CONTAINER_NAME'] =     %x{docker inspect --format='{{.Name}}' $CONTAINER_CID_LONG}.strip.gsub('/', '')
 
-    # Run the nameserver update in the Net Namespace of the LXC Container
-    system(update_command.gsub(/^[ ]{4}/, ''))
+      system("cli53 rrdelete #{ENV['DOMAIN']} #{ENV['CONTAINER_HOSTNAME']} A")
+      if $?.success?
+        log.info "Deleted A record (#{ENV['CONTAINER_CID']}): #{ENV['CONTAINER_HOSTNAME']}.#{ENV['NET_DOMAIN']}."
+      else
+        log.error "We could not update the Docker DNS records for #{ENV['CONTAINER_CID']}. Please check your nsupdate keys."
+      end
 
-    # Message an success
-    if $?.success?
-      log.info "Updated Docker DNS (#{ENV['CONTAINER_CID']}): #{ENV['CONTAINER_HOSTNAME']}.#{ENV['NET_DOMAIN']} 60 A #{ENV['CONTAINER_IP_ADDR']}."
-      log.info "       Added alias (#{ENV['CONTAINER_CID']}): #{ENV['CONTAINER_NAME']}.#{ENV['NET_DOMAIN']} 60 CNAME #{ENV['CONTAINER_HOSTNAME']}.#{ENV['NET_DOMAIN']}."
-    else
-      log.error "We could not update the Docker DNS records for #{ENV['CONTAINER_CID']}. Please check your nsupdate keys."
-    end
-  when 'die'
-    # Get Container Details for DNS
-    ENV['CONTAINER_IP_ADDR']  = %x{docker inspect $CONTAINER_CID_LONG | grep '"IPAddress"'}.strip.gsub(/[^0-9\.]/i, '')
-    ENV['CONTAINER_HOSTNAME'] = %x{docker inspect $CONTAINER_CID_LONG| grep '"Hostname"' | awk '{print $NF}'}.strip.gsub(/^"(.*)",/i, '\1')
-    ENV['CONTAINER_NAME'] =     %x{docker inspect --format='{{.Name}}' $CONTAINER_CID_LONG}.strip.gsub('/', '')
-
-
-    # Build the command to update the dns server
-    update_command = <<-EOF
-    nsupdate -k $DDNS_KEY <<-UPDATE
-    server $NET_NS
-    zone $NET_DOMAIN
-    update delete $CONTAINER_HOSTNAME.$NET_DOMAIN
-    update delete $CONTAINER_NAME.$NET_DOMAIN
-    send
-    UPDATE
-    EOF
-    
-
-    # Run the nameserver update in the Net Namespace of the LXC Container
-    system(update_command.gsub(/^[ ]{4}/, ''))
-
-    # Message an success
-    if $?.success?
-      log.info "Deleted DNS records (#{ENV['CONTAINER_CID']}): #{ENV['CONTAINER_HOSTNAME']}.#{ENV['NET_DOMAIN']} and #{ENV['CONTAINER_NAME']}.#{ENV['NET_DOMAIN']}."
-    else
-      log.error "We could not update the Docker DNS records for #{ENV['CONTAINER_CID']}. Please check your nsupdate keys."
-    end
+      system("cli53 rrdelete #{ENV['DOMAIN']} #{ENV['CONTAINER_NAME']} CNAME")
+      if $?.success?
+        log.info "Deleted CNAME record (#{ENV['CONTAINER_CID']}): #{ENV['CONTAINER_NAME']}.#{ENV['NET_DOMAIN']}."
+      else
+        log.error "We could not update the Docker DNS records for #{ENV['CONTAINER_CID']}. Please check your nsupdate keys."
+      end
   end
 end
 
