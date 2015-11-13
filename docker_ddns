@@ -52,8 +52,8 @@ while line = events.gets
   when 'start'
 
     # Get Container Details for DNS
-    ENV['CONTAINER_IP_ADDR']  = %x{docker inspect $CONTAINER_CID_LONG | grep '"IPAddress"'}.strip.gsub(/[^0-9\.]/i, '')
-    ENV['CONTAINER_HOSTNAME'] = %x{docker inspect $CONTAINER_CID_LONG| grep '"Hostname"' | awk '{print $NF}'}.strip.gsub(/^"(.*)",/i, '\1')
+    ENV['CONTAINER_IP_ADDR']  = %x{docker inspect --format='{{.NetworkSettings.IPAddress}}' $CONTAINER_CID_LONG }.strip
+    ENV['CONTAINER_HOSTNAME'] = %x{docker inspect --format='{{.Config.Hostname}}' $CONTAINER_CID_LONG}.strip
     ENV['CONTAINER_NAME'] =     %x{docker inspect --format='{{.Name}}' $CONTAINER_CID_LONG}.strip.gsub('/', '')
 
 
