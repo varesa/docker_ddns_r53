@@ -28,34 +28,6 @@ log.info "Original author: Kelly Becker <kbecker@kellybeckr.me>"
 log.info "        Website: http://kellybecker.me"
 log.info "Modified by: Esa Varemo <esa@kuivanto.fi>"
 
-
-# Listen To Docker.io Events
-events = IO.popen('docker events')
-
-# Keep Listening for incoming data
-while line = events.gets
-  ENV['CONTAINER_EVENT']    = line.split.last
-  ENV['CONTAINER_CID_LONG'] = line.gsub(/^.*([0-9a-f]{64}).*$/i, '\1')
-  ENV['CONTAINER_CID']      = ENV['CONTAINER_CID_LONG'][0...12]
-
-  ENV['CONTAINER_IP_ADDR']  = %x{docker inspect --format='{{.NetworkSettings.IPAddress}}' $CONTAINER_CID_LONG }.strip
-  ENV['CONTAINER_HOSTNAME'] = %x{docker inspect --format='{{.Config.Hostname}}' $CONTAINER_CID_LONG}.strip
-  ENV['CONTAINER_NAME'] =     %x{docker inspect --format='{{.Name}}' $CONTAINER_CID_LONG}.strip.gsub('/', '')
-
-  handle_event()
-end
-
-def handle_event()
-  log.info "Event Fired (#{ENV['CONTAINER_CID']}): #{ENV['CONTAINER_EVENT']}."
-
-  case ENV['CONTAINER_EVENT']
-    when 'start'
-      create_records()
-    when 'die'
-      delete_records()
-  end
-end
-
 def create_records()
   system("cli53 rrcreate --replace #{ENV['DOMAIN']} \"#{ENV['CONTAINER_CID']} 60 A #{ENV['CONTAINER_IP_ADDR']}\"")
   if $?.success?
@@ -86,4 +58,31 @@ def delete_records()
   else
     log.error "We could not update the Docker DNS records for #{ENV['CONTAINER_CID']}. Please check your nsupdate keys."
   end
+end
+
+def handle_event()
+  log.info "Event Fired (#{ENV['CONTAINER_CID']}): #{ENV['CONTAINER_EVENT']}."
+
+  case ENV['CONTAINER_EVENT']
+    when 'start'
+      create_records()
+    when 'die'
+      delete_records()
+  end
+end
+
+# Listen To Docker.io Events
+events = IO.popen('docker events')
+
+# Keep Listening for incoming data
+while line = events.gets
+  ENV['CONTAINER_EVENT']    = line.split.last
+  ENV['CONTAINER_CID_LONG'] = line.gsub(/^.*([0-9a-f]{64}).*$/i, '\1')
+  ENV['CONTAINER_CID']      = ENV['CONTAINER_CID_LONG'][0...12]
+
+  ENV['CONTAINER_IP_ADDR']  = %x{docker inspect --format='{{.NetworkSettings.IPAddress}}' $CONTAINER_CID_LONG }.strip
+  ENV['CONTAINER_HOSTNAME'] = %x{docker inspect --format='{{.Config.Hostname}}' $CONTAINER_CID_LONG}.strip
+  ENV['CONTAINER_NAME'] =     %x{docker inspect --format='{{.Name}}' $CONTAINER_CID_LONG}.strip.gsub('/', '')
+
+  handle_event()
 end
