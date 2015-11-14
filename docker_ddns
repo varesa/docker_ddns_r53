@@ -51,14 +51,14 @@ while line = events.gets
       ENV['CONTAINER_HOSTNAME'] = %x{docker inspect --format='{{.Config.Hostname}}' $CONTAINER_CID_LONG}.strip
       ENV['CONTAINER_NAME'] =     %x{docker inspect --format='{{.Name}}' $CONTAINER_CID_LONG}.strip.gsub('/', '')
 
-      system("cli53 rrcreate #{ENV['DOMAIN']} \"#{ENV['CONTAINER_CID']} 60 A #{ENV['CONTAINER_IP_ADDR']}\"")
+      system("cli53 rrcreate -r #{ENV['DOMAIN']} \"#{ENV['CONTAINER_CID']} 60 A #{ENV['CONTAINER_IP_ADDR']}\"")
       if $?.success?
         log.info "Updated Docker DNS (#{ENV['CONTAINER_CID']}): #{ENV['CONTAINER_HOSTNAME']}.#{ENV['NET_DOMAIN']} 60 A #{ENV['CONTAINER_IP_ADDR']}."
       else
         log.error "We could not update the A record for #{ENV['CONTAINER_CID']}. Please check your nsupdate keys."
       end
 
-      system("cli53 rrcreate #{ENV['DOMAIN']} \"#{ENV['CONTAINER_NAME']} 60 CNAME #{ENV['CONTAINER_CID']}\"")
+      system("cli53 rrcreate -r #{ENV['DOMAIN']} \"#{ENV['CONTAINER_NAME']} 60 CNAME #{ENV['CONTAINER_CID']}\"")
       if $?.success?
         log.info "Added alias (#{ENV['CONTAINER_CID']}): #{ENV['CONTAINER_NAME']} 60 CNAME #{ENV['CONTAINER_HOSTNAME']}"
       else
