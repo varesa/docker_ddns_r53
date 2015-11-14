@@ -9,7 +9,7 @@
 # Set up a proper logger
 require 'logger'
 log_file = ARGV.first || '-'
-log = Logger.new(log_file == '-' ? $stdout : log_file)
+$log = Logger.new(log_file == '-' ? $stdout : log_file)
 
 # Create a PID file for this service
 File.open('/var/run/docker_ddns.pid', 'w+') { |f| f.write($$) }
@@ -23,45 +23,45 @@ trap("INT") do
 end
 
 # Welcome message
-log.info "Starting Docker Dynamic DNS - Event Handler"
-log.info "Original author: Kelly Becker <kbecker@kellybeckr.me>"
-log.info "        Website: http://kellybecker.me"
-log.info "Modified by: Esa Varemo <esa@kuivanto.fi>"
+$log.info "Starting Docker Dynamic DNS - Event Handler"
+$log.info "Original author: Kelly Becker <kbecker@kellybeckr.me>"
+$log.info "        Website: http://kellybecker.me"
+$log.info "Modified by: Esa Varemo <esa@kuivanto.fi>"
 
 def create_records()
   system("cli53 rrcreate --replace #{ENV['DOMAIN']} \"#{ENV['CONTAINER_CID']} 60 A #{ENV['CONTAINER_IP_ADDR']}\"")
   if $?.success?
-    log.info "Updated Docker DNS (#{ENV['CONTAINER_CID']}): #{ENV['CONTAINER_HOSTNAME']}.#{ENV['NET_DOMAIN']} 60 A #{ENV['CONTAINER_IP_ADDR']}."
+    $log.info "Updated Docker DNS (#{ENV['CONTAINER_CID']}): #{ENV['CONTAINER_HOSTNAME']}.#{ENV['NET_DOMAIN']} 60 A #{ENV['CONTAINER_IP_ADDR']}."
   else
-    log.error "Could not update the A record for #{ENV['CONTAINER_CID']}"
+    $log.error "Could not update the A record for #{ENV['CONTAINER_CID']}"
   end
 
   system("cli53 rrcreate --replace #{ENV['DOMAIN']} \"#{ENV['CONTAINER_NAME']} 60 CNAME #{ENV['CONTAINER_CID']}\"")
   if $?.success?
-    log.info "Added alias (#{ENV['CONTAINER_CID']}): #{ENV['CONTAINER_NAME']} 60 CNAME #{ENV['CONTAINER_HOSTNAME']}"
+    $log.info "Added alias (#{ENV['CONTAINER_CID']}): #{ENV['CONTAINER_NAME']} 60 CNAME #{ENV['CONTAINER_HOSTNAME']}"
   else
-    log.error "Could not update the CNAME record for #{ENV['CONTAINER_CID']}"
+    $log.error "Could not update the CNAME record for #{ENV['CONTAINER_CID']}"
   end
 end
 
 def delete_records()
   system("cli53 rrdelete #{ENV['DOMAIN']} #{ENV['CONTAINER_HOSTNAME']} A")
   if $?.success?
-    log.info "Deleted A record (#{ENV['CONTAINER_CID']}): #{ENV['CONTAINER_HOSTNAME']}.#{ENV['NET_DOMAIN']}."
+    $log.info "Deleted A record (#{ENV['CONTAINER_CID']}): #{ENV['CONTAINER_HOSTNAME']}.#{ENV['NET_DOMAIN']}."
   else
-    log.error "We could not update the Docker DNS records for #{ENV['CONTAINER_CID']}. Please check your nsupdate keys."
+    $log.error "We could not update the Docker DNS records for #{ENV['CONTAINER_CID']}. Please check your nsupdate keys."
   end
 
   system("cli53 rrdelete #{ENV['DOMAIN']} #{ENV['CONTAINER_NAME']} CNAME")
   if $?.success?
-    log.info "Deleted CNAME record (#{ENV['CONTAINER_CID']}): #{ENV['CONTAINER_NAME']}.#{ENV['NET_DOMAIN']}."
+    $log.info "Deleted CNAME record (#{ENV['CONTAINER_CID']}): #{ENV['CONTAINER_NAME']}.#{ENV['NET_DOMAIN']}."
   else
-    log.error "We could not update the Docker DNS records for #{ENV['CONTAINER_CID']}. Please check your nsupdate keys."
+    $log.error "We could not update the Docker DNS records for #{ENV['CONTAINER_CID']}. Please check your nsupdate keys."
   end
 end
 
 def handle_event()
-  log.info "Event Fired (#{ENV['CONTAINER_CID']}): #{ENV['CONTAINER_EVENT']}."
+  $log.info "Event Fired (#{ENV['CONTAINER_CID']}): #{ENV['CONTAINER_EVENT']}."
 
   case ENV['CONTAINER_EVENT']
     when 'start'
