@@ -34,56 +34,56 @@ events = IO.popen('docker events')
 
 # Keep Listening for incoming data
 while line = events.gets
-
-  # Container Configuration
   ENV['CONTAINER_EVENT']    = line.split.last
   ENV['CONTAINER_CID_LONG'] = line.gsub(/^.*([0-9a-f]{64}).*$/i, '\1')
   ENV['CONTAINER_CID']      = ENV['CONTAINER_CID_LONG'][0...12]
 
-  # Event Fired info
+  ENV['CONTAINER_IP_ADDR']  = %x{docker inspect --format='{{.NetworkSettings.IPAddress}}' $CONTAINER_CID_LONG }.strip
+  ENV['CONTAINER_HOSTNAME'] = %x{docker inspect --format='{{.Config.Hostname}}' $CONTAINER_CID_LONG}.strip
+  ENV['CONTAINER_NAME'] =     %x{docker inspect --format='{{.Name}}' $CONTAINER_CID_LONG}.strip.gsub('/', '')
+
+  handle_event()
+end
+
+def handle_event()
   log.info "Event Fired (#{ENV['CONTAINER_CID']}): #{ENV['CONTAINER_EVENT']}."
 
   case ENV['CONTAINER_EVENT']
     when 'start'
-
-      # Get Container Details for DNS
-      ENV['CONTAINER_IP_ADDR']  = %x{docker inspect --format='{{.NetworkSettings.IPAddress}}' $CONTAINER_CID_LONG }.strip
-      ENV['CONTAINER_HOSTNAME'] = %x{docker inspect --format='{{.Config.Hostname}}' $CONTAINER_CID_LONG}.strip
-      ENV['CONTAINER_NAME'] =     %x{docker inspect --format='{{.Name}}' $CONTAINER_CID_LONG}.strip.gsub('/', '')
-
-      system("cli53 rrcreate --replace #{ENV['DOMAIN']} \"#{ENV['CONTAINER_CID']} 60 A #{ENV['CONTAINER_IP_ADDR']}\"")
-      if $?.success?
-        log.info "Updated Docker DNS (#{ENV['CONTAINER_CID']}): #{ENV['CONTAINER_HOSTNAME']}.#{ENV['NET_DOMAIN']} 60 A #{ENV['CONTAINER_IP_ADDR']}."
-      else
-        log.error "Could not update the A record for #{ENV['CONTAINER_CID']}"
-      end
-
-      system("cli53 rrcreate --replace #{ENV['DOMAIN']} \"#{ENV['CONTAINER_NAME']} 60 CNAME #{ENV['CONTAINER_CID']}\"")
-      if $?.success?
-        log.info "Added alias (#{ENV['CONTAINER_CID']}): #{ENV['CONTAINER_NAME']} 60 CNAME #{ENV['CONTAINER_HOSTNAME']}"
-      else
-        log.error "Could not update the CNAME record for #{ENV['CONTAINER_CID']}"
-      end
+      create_records()
     when 'die'
-      # Get Container Details for DNS
-      ENV['CONTAINER_IP_ADDR']  = %x{docker inspect $CONTAINER_CID_LONG | grep '"IPAddress"'}.strip.gsub(/[^0-9\.]/i, '')
-      ENV['CONTAINER_HOSTNAME'] = %x{docker inspect $CONTAINER_CID_LONG| grep '"Hostname"' | awk '{print $NF}'}.strip.gsub(/^"(.*)",/i, '\1')
-      ENV['CONTAINER_NAME'] =     %x{docker inspect --format='{{.Name}}' $CONTAINER_CID_LONG}.strip.gsub('/', '')
-
-      system("cli53 rrdelete #{ENV['DOMAIN']} #{ENV['CONTAINER_HOSTNAME']} A")
-      if $?.success?
-        log.info "Deleted A record (#{ENV['CONTAINER_CID']}): #{ENV['CONTAINER_HOSTNAME']}.#{ENV['NET_DOMAIN']}."
-      else
-        log.error "We could not update the Docker DNS records for #{ENV['CONTAINER_CID']}. Please check your nsupdate keys."
-      end
-
-      system("cli53 rrdelete #{ENV['DOMAIN']} #{ENV['CONTAINER_NAME']} CNAME")
-      if $?.success?
-        log.info "Deleted CNAME record (#{ENV['CONTAINER_CID']}): #{ENV['CONTAINER_NAME']}.#{ENV['NET_DOMAIN']}."
-      else
-        log.error "We could not update the Docker DNS records for #{ENV['CONTAINER_CID']}. Please check your nsupdate keys."
-      end
+      delete_records()
   end
 end
 
-exit
+def create_records()
+  system("cli53 rrcreate --replace #{ENV['DOMAIN']} \"#{ENV['CONTAINER_CID']} 60 A #{ENV['CONTAINER_IP_ADDR']}\"")
+  if $?.success?
+    log.info "Updated Docker DNS (#{ENV['CONTAINER_CID']}): #{ENV['CONTAINER_HOSTNAME']}.#{ENV['NET_DOMAIN']} 60 A #{ENV['CONTAINER_IP_ADDR']}."
+  else
+    log.error "Could not update the A record for #{ENV['CONTAINER_CID']}"
+  end
+
+  system("cli53 rrcreate --replace #{ENV['DOMAIN']} \"#{ENV['CONTAINER_NAME']} 60 CNAME #{ENV['CONTAINER_CID']}\"")
+  if $?.success?
+    log.info "Added alias (#{ENV['CONTAINER_CID']}): #{ENV['CONTAINER_NAME']} 60 CNAME #{ENV['CONTAINER_HOSTNAME']}"
+  else
+    log.error "Could not update the CNAME record for #{ENV['CONTAINER_CID']}"
+  end
+end
+
+def delete_records()
+  system("cli53 rrdelete #{ENV['DOMAIN']} #{ENV['CONTAINER_HOSTNAME']} A")
+  if $?.success?
+    log.info "Deleted A record (#{ENV['CONTAINER_CID']}): #{ENV['CONTAINER_HOSTNAME']}.#{ENV['NET_DOMAIN']}."
+  else
+    log.error "We could not update the Docker DNS records for #{ENV['CONTAINER_CID']}. Please check your nsupdate keys."
+  end
+
+  system("cli53 rrdelete #{ENV['DOMAIN']} #{ENV['CONTAINER_NAME']} CNAME")
+  if $?.success?
+    log.info "Deleted CNAME record (#{ENV['CONTAINER_CID']}): #{ENV['CONTAINER_NAME']}.#{ENV['NET_DOMAIN']}."
+  else
+    log.error "We could not update the Docker DNS records for #{ENV['CONTAINER_CID']}. Please check your nsupdate keys."
+  end
+end
